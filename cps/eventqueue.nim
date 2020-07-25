@@ -412,3 +412,24 @@ proc io*(file: int | SocketHandle; events: set[Event]): Cont {.cpsMagic.} =
       eq.waiting.put(file.int, id)
       when cpsDebug:
         echo "📂file ", $Fd(file)
+
+when compileOption("threads") or defined(nimdoc):
+  import std/isolation
+
+  var chan: Channel[Cont]
+  open(chan)
+
+  proc dispatch(interval: Duration) {.thread, nosinks.} =
+    ## receive a continuation via a new thread and run it in that
+    ## thread's dispatcher
+    spawn recv(chan)
+    #run(interval)
+
+  proc detach*(interval = DurationZero;
+               cpu = high(Natural)): Cont {.cpsMagic.} =
+    ## Continue in a new thread.
+    var th: Thread[Duration]
+    th.createThread(dispatch, interval)
+    if cpu != high(Natural):
+      pinToCpu(th, cpu)
+    send(chan, move isolate(c))
