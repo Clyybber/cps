@@ -256,8 +256,9 @@ proc makeTail(env: var Env; name: NimNode; n: NimNode): NimNode =
     result.doc "adding the proc verbatim"
     result.add n
   else:
-    # the locals value is, nominally, a proc param
-    var locals = genSym(nskParam, "locals")
+    # the locals value is, nominally, a proc param -- or it was.
+    # now we just use whatever the macro provided the env
+    var locals = env.first
     var body = env.wrapProcBody(locals, n)
 
     #result.doc "creating a new proc: " & name.repr
@@ -501,10 +502,22 @@ macro cps*(n: untyped): untyped =
   # establish a new environment with the supplied continuation type;
   # accumulates byproducts of cps in the types statement list
   var types = newStmtList()
-  var env = newEnv(types, n.params[0])
 
-  # adding the proc params to the environment
-  for defs in n.params[1..^1]:
+  var env: Env
+  if len(n.params) > 1 and eqIdent(n.params[0], n.params[1][1]):
+    # if the return type matches that of the first argument, we'll assume
+    # the user wants that argument name to reflect the continuation
+    env = newEnv(n.params[1][0], types, n.params[0])
+
+  else:
+    # otherwise, just use "c"
+    env = newEnv(ident"c", types, n.params[0])
+
+    # and insert it into the proc's params automatically
+    n.params.insert(1, env.firstDef)
+
+  # adding the remaining proc params to the environment
+  for defs in n.params[2 .. ^1]:
     env.add defs
 
   # ensaftening the proc's body
